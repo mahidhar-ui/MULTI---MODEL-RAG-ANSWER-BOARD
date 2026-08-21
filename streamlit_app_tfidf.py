@@ -6,14 +6,13 @@ import streamlit as st
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from sklearn.feature_extraction.text import (
-    TfidfVectorizer
-)
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-from sklearn.metrics.pairwise import (
-    cosine_similarity
-)
 
+# ==========================================
+# PAGE CONFIG
+# ==========================================
 
 st.set_page_config(
     page_title="MULTI-MODEL RAG ANSWERBOARD",
@@ -28,14 +27,13 @@ st.set_page_config(
 
 load_dotenv()
 
-GROQ_API_KEY = os.getenv(
-    "GROQ_API_KEY"
-)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 if not GROQ_API_KEY:
 
     st.error(
-        "GROQ_API_KEY not found in .env"
+        "GROQ_API_KEY environment variable not found. "
+        "Please add it in Render Environment Variables."
     )
 
     st.stop()
@@ -52,14 +50,9 @@ client = OpenAI(
 # ==========================================
 
 MODELS = {
-    "openai/gpt-oss-20b":
-    "GPT-OSS 20B",
-
-    "openai/gpt-oss-120b":
-    "GPT-OSS 120B",
-
-    "qwen/qwen3.6-27b":
-    "Qwen 3.6 27B"
+    "openai/gpt-oss-20b": "GPT-OSS 20B",
+    "openai/gpt-oss-120b": "GPT-OSS 120B",
+    "qwen/qwen3.6-27b": "Qwen 3.6 27B"
 }
 
 
@@ -75,8 +68,13 @@ def load_documents():
         "_data"
     )
 
-    chunks = []
+    if not os.path.exists(folder):
 
+        raise FileNotFoundError(
+            f"Documents folder not found: {folder}"
+        )
+
+    chunks = []
     sources = []
 
     for filename in os.listdir(folder):
@@ -115,13 +113,15 @@ def load_documents():
 
                 if len(chunk) > 30:
 
-                    chunks.append(
-                        chunk
-                    )
+                    chunks.append(chunk)
 
-                    sources.append(
-                        filename
-                    )
+                    sources.append(filename)
+
+    if not chunks:
+
+        raise ValueError(
+            "No valid .txt documents found in _data folder."
+        )
 
     return chunks, sources
 
@@ -181,7 +181,6 @@ def retrieve(
     ][:top_k]
 
     relevant_chunks = []
-
     relevant_sources = []
 
     for index in indices:
@@ -220,32 +219,35 @@ def call_model(
 ):
 
     messages = [
+
         {
             "role": "system",
             "content": (
-                "Answer only using this context. "
-                "If the answer is not available, "
-                "say so.\n\n"
+                "You are a helpful RAG assistant. "
+                "Answer only using the provided context. "
+                "If the answer is not available in the context, "
+                "say: 'The answer is not available in the provided documents.' "
+                "\n\n"
                 f"CONTEXT:\n{context}"
             )
         },
+
         {
             "role": "user",
             "content": question
         }
+
     ]
 
     start = time.perf_counter()
 
     try:
 
-        response = (
-            client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=0.3,
-                max_tokens=700
-            )
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.3,
+            max_tokens=700
         )
 
         latency = round(
@@ -256,10 +258,7 @@ def call_model(
         )
 
         return (
-            response
-            .choices[0]
-            .message
-            .content,
+            response.choices[0].message.content,
             latency,
             None
         )
@@ -278,12 +277,11 @@ def call_model(
 # ==========================================
 
 st.title(
-    "📚 TF-IDF RAG Answerboard"
+    "📚 MULTI-MODEL ANSWERBOARD "
 )
 
 st.write(
-    "This version uses TF-IDF + "
-    "Cosine Similarity for retrieval."
+    "Cosine Similarity for document retrieval."
 )
 
 
@@ -293,18 +291,17 @@ with st.sidebar:
         "Select Models",
         options=list(MODELS.keys()),
         default=[
-            "llama-3.1-8b-instant",
-            "llama-3.3-70b-versatile"
+            "openai/gpt-oss-20b",
+            "openai/gpt-oss-120b"
         ],
-        format_func=lambda x:
-        MODELS[x]
+        format_func=lambda x: MODELS[x]
     )
 
     top_k = st.slider(
         "Top K Chunks",
-        1,
-        5,
-        3
+        min_value=1,
+        max_value=5,
+        value=3
     )
 
 
@@ -322,20 +319,49 @@ if st.button(
     if not question.strip():
 
         st.warning(
-            "Enter a question."
+            "Please enter a question."
         )
 
         st.stop()
 
 
-    context, sources = retrieve(
-        question,
-        top_k
-    )
+    if not selected_models:
+
+        st.warning(
+            "Please select at least one model."
+        )
+
+        st.stop()
+
+
+    try:
+
+        context, sources = retrieve(
+            question,
+            top_k
+        )
+
+    except Exception as error:
+
+        st.error(
+            f"Error loading documents: {error}"
+        )
+
+        st.stop()
+
+
+    if not context:
+
+        st.warning(
+            "No relevant information was found "
+            "in the available documents."
+        )
+
+        st.stop()
 
 
     st.subheader(
-        "Retrieved Sources"
+        "📄 Retrieved Sources"
     )
 
     for source in sources:
@@ -365,17 +391,18 @@ if st.button(
                 "Generating..."
             ):
 
-                answer, latency, error = (
-                    call_model(
-                        model,
-                        question,
-                        context
-                    )
+                answer, latency, error = call_model(
+                    model,
+                    question,
+                    context
                 )
+
 
             if error:
 
-                st.error(error)
+                st.error(
+                    f"Model Error: {error}"
+                )
 
             else:
 
