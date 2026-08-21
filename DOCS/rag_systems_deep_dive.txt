@@ -1,0 +1,29 @@
+Why RAG exists: Large language models are trained on a fixed data snapshot and have no 
+inherent way to access private or newly published information. Without grounding, a 
+model may generate a plausible-sounding but incorrect answer, a failure mode called 
+hallucination. RAG addresses this by retrieving relevant documents and injecting them 
+into the model's context before generation, allowing responses to cite exactly where each 
+claim came from.
+
+Indexing stage: Documents are split into chunks, typically a few hundred to a thousand 
+characters each. Each chunk is embedded into a vector and stored, along with metadata 
+such as source filename and chunk position, in a vector database.
+
+Query stage: The user's query is embedded with the same model used during indexing. The 
+vector database is searched for the chunks closest to the query embedding using a similarity 
+metric such as cosine similarity. The top-k chunks are formatted into a context block and
+injected into the prompt, with an instruction telling the model to answer only from that 
+context and cite sources.
+
+Chunking strategy matters: chunks that are too small lose surrounding context; chunks that 
+are too large dilute relevant information and waste context budget. A common starting point
+is 50 to 100 words per chunk.
+
+Evaluating a RAG system: retrieval quality (does the retriever pull back the chunk that 
+contains the answer) and generation quality (does the model produce an accurate, well-cited 
+answer from those chunks) should be measured separately, since a system can fail at either 
+stage independently.
+
+Common pitfall: not surfacing retrieved sources to the end user defeats one of RAG's biggest
+advantages, verifiability. Showing "Sources used" alongside the generated answer is a small
+addition that significantly increases user trust.

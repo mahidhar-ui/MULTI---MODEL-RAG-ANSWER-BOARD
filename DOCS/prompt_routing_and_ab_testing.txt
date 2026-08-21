@@ -1,0 +1,24 @@
+Smart routing in a multi-model system: rather than calling every available model for every 
+prompt, a router inspects the prompt and selects the model or models best suited to it. A 
+simple, interpretable approach uses keyword and pattern heuristics rather than a trained 
+classifier, which keeps the system fast, free to run, and easy to explain to a reviewer or 
+interviewer.
+
+Typical routing categories: short factual questions (who, what, when) can be answered well
+by small, fast, cheap models. Code-related prompts benefit from models with stronger code 
+training. Long, open-ended, or comparative prompts that require multi-step reasoning benefit 
+from larger flagship models, even at higher latency and cost.
+
+Cost and latency tradeoffs: a flagship model generally produces higher-quality answers on 
+complex tasks but costs more per token and responds more slowly. A fast, cheap model is 
+often just as accurate on simple factual questions, so routing simple queries away from the 
+flagship model reduces average cost without meaningfully reducing answer quality.
+
+A/B prompt testing: two variants of a prompt (differing in wording, added instructions, or 
+examples) are run against the same model, and the resulting answers are compared side by 
+side. This isolates the effect of prompt wording from model choice, which is useful for 
+iteratively improving system prompts before deploying them.
+
+Interpreting an A/B result: differences in factual accuracy usually matter most; differences 
+in verbosity, tone, or formatting are often just stylistic and may not indicate one prompt 
+is objectively better than the other for all use cases.

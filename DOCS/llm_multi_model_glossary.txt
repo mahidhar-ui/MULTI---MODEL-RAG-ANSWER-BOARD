@@ -1,0 +1,32 @@
+Retrieval-Augmented Generation (RAG): A technique where a language model's prompt is 
+supplemented with relevant text chunks retrieved from an external knowledge base at 
+query time, rather than relying only on the model's training data. This reduces 
+hallucination and allows answers to cite specific sources.
+
+Embedding: A numerical vector representation of text such that semantically similar 
+pieces of text end up close together in vector space. Sentence-transformer and neural
+embedding models are commonly used for semantic search.
+
+Vector Database: A database optimized for storing embeddings and performing approximate
+nearest-neighbour search. ChromaDB is popular for local, free prototyping because it 
+requires no external hosting.
+
+Prompt Routing: The practice of directing different user prompts to different models 
+based on the type or complexity of the request, in order to balance cost, latency, and 
+answer quality. A router might send simple factual questions to a small, cheap model and 
+complex reasoning tasks to a larger, more expensive model.
+
+A/B Prompt Testing: Running two variants of a prompt against the same model to compare 
+which variant produces better, more accurate, or more concise output. Commonly used to 
+iteratively improve system prompts in production applications.
+
+Token: The basic unit of text a language model processes. API providers typically price 
+usage per million tokens, split into input (prompt) tokens and output (completion) tokens.
+
+Latency: The time taken between sending a request to a model and receiving the full 
+response. Hardware such as Groq's LPU (Language Processing Unit) is designed specifically 
+to minimize latency for token generation compared to standard GPU-based inference.
+
+Cost Badge: A UI element showing the estimated dollar cost of a single model call, calculated
+from the provider's published per-token pricing and the actual input/output token counts for
+that call.
