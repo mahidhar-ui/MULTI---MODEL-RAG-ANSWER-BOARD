@@ -12,6 +12,6 @@ COPY main.py .
 COPY models_config.py .
 COPY router.py .
 
-COPY _data/ ./_data/
+COPY DOCS/ ./_data/
 
 CMD ["streamlit", "run", "streamlit_app_tfidf.py", "--server.port=10000", "--server.address=0.0.0.0"]
