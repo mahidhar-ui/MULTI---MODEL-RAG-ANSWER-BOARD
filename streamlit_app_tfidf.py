@@ -16,8 +16,8 @@ from sklearn.metrics.pairwise import (
 
 
 st.set_page_config(
-    page_title="TF-IDF RAG",
-    page_icon="📚",
+    page_title="MULTI-MODEL RAG ANSWERBOARD",
+    page_icon="🤖",
     layout="wide"
 )
 
@@ -52,17 +52,14 @@ client = OpenAI(
 # ==========================================
 
 MODELS = {
-    "llama-3.1-8b-instant":
-    "Llama 3.1 8B",
-
-    "llama-3.3-70b-versatile":
-    "Llama 3.3 70B",
-
     "openai/gpt-oss-20b":
     "GPT-OSS 20B",
 
     "openai/gpt-oss-120b":
-    "GPT-OSS 120B"
+    "GPT-OSS 120B",
+
+    "qwen/qwen3.6-27b":
+    "Qwen 3.6 27B"
 }
 
 
