@@ -12,10 +12,6 @@ COPY main.py .
 COPY models_config.py .
 COPY router.py .
 
-# Copy your existing DOCS folder into _data
-# because your Python code expects documents in _data
-COPY DOCS/ ./_data/
+COPY _data/ ./_data/
 
-EXPOSE 10000
-
-CMD ["sh", "-c", "streamlit run streamlit_app_tfidf.py --server.port=${PORT:-10000} --server.address=0.0.0.0"]
+CMD ["streamlit", "run", "streamlit_app_tfidf.py", "--server.port=10000", "--server.address=0.0.0.0"]
