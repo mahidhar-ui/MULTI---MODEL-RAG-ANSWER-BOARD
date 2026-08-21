@@ -1,8 +1,8 @@
 import os
 import time
+from pathlib import Path
 
 import streamlit as st
-
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -32,8 +32,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
 
     st.error(
-        "GROQ_API_KEY environment variable not found. "
-        "Please add it in Render Environment Variables."
+        "GROQ_API_KEY environment variable not found."
     )
 
     st.stop()
@@ -50,9 +49,43 @@ client = OpenAI(
 # ==========================================
 
 MODELS = {
-    "openai/gpt-oss-20b": "GPT-OSS 20B",
-    "openai/gpt-oss-120b": "GPT-OSS 120B",
-    "qwen/qwen3.6-27b": "Qwen 3.6 27B"
+
+    "openai/gpt-oss-20b": {
+        "name": "GPT-OSS 20B",
+        "cost": "Low",
+        "speed": "Very Fast"
+    },
+
+    "openai/gpt-oss-120b": {
+        "name": "GPT-OSS 120B",
+        "cost": "Medium",
+        "speed": "Fast"
+    },
+
+    "qwen/qwen3.6-27b": {
+        "name": "Qwen 3.6 27B",
+        "cost": "High",
+        "speed": "Fast"
+    }
+}
+
+
+# ==========================================
+# PROMPTS
+# ==========================================
+
+PROMPTS = {
+
+    "Prompt A - Concise": (
+        "Answer clearly and concisely. "
+        "Focus only on the most important information."
+    ),
+
+    "Prompt B - Detailed": (
+        "Act as an expert teacher. "
+        "Explain the answer step by step "
+        "using clear and simple language."
+    )
 }
 
 
@@ -63,71 +96,113 @@ MODELS = {
 @st.cache_resource
 def load_documents():
 
-    folder = os.path.join(
-        os.path.dirname(__file__),
-        "_data"
-    )
+    base_folder = Path(__file__).resolve().parent
 
-    if not os.path.exists(folder):
-
-        raise FileNotFoundError(
-            f"Documents folder not found: {folder}"
-        )
+    # Check all possible document folders
+    possible_folders = [
+        base_folder / "_data",
+        base_folder / "DOCS",
+        base_folder / "docs"
+    ]
 
     chunks = []
     sources = []
+    found_files = []
 
-    for filename in os.listdir(folder):
+    # Go through every possible folder
+    for folder in possible_folders:
 
-        if filename.endswith(".txt"):
+        if folder.exists() and folder.is_dir():
 
-            filepath = os.path.join(
-                folder,
-                filename
+            txt_files = list(
+                folder.glob("*.txt")
             )
 
-            with open(
-                filepath,
-                "r",
-                encoding="utf-8"
-            ) as file:
+            for filepath in txt_files:
 
-                text = file.read()
+                try:
 
-            words = text.split()
+                    with open(
+                        filepath,
+                        "r",
+                        encoding="utf-8"
+                    ) as file:
 
-            chunk_size = 80
+                        text = file.read()
 
-            for start in range(
-                0,
-                len(words),
-                chunk_size
-            ):
+                    # Skip empty files
+                    if not text.strip():
+                        continue
 
-                chunk = " ".join(
-                    words[
-                        start:
-                        start + chunk_size
-                    ]
-                )
+                    found_files.append(
+                        str(filepath)
+                    )
 
-                if len(chunk) > 30:
+                    words = text.split()
 
-                    chunks.append(chunk)
+                    chunk_size = 80
 
-                    sources.append(filename)
+                    for start in range(
+                        0,
+                        len(words),
+                        chunk_size
+                    ):
 
+                        chunk = " ".join(
+                            words[
+                                start:
+                                start + chunk_size
+                            ]
+                        )
+
+                        if len(chunk.strip()) > 30:
+
+                            chunks.append(
+                                chunk
+                            )
+
+                            sources.append(
+                                filepath.name
+                            )
+
+                except Exception as error:
+
+                    print(
+                        f"Error reading {filepath}: {error}"
+                    )
+
+
+    # If no TXT files were found
+    if not found_files:
+
+        searched_folders = "\n".join(
+            [
+                str(folder)
+                for folder in possible_folders
+            ]
+        )
+
+        raise ValueError(
+            "No .txt documents found.\n\n"
+            "The application searched these folders:\n"
+            f"{searched_folders}"
+        )
+
+
+    # If files exist but no valid chunks
     if not chunks:
 
         raise ValueError(
-            "No valid .txt documents found in _data folder."
+            "TXT files were found, but no valid "
+            "text chunks could be created."
         )
+
 
     return chunks, sources
 
 
 # ==========================================
-# TF-IDF INDEX
+# BUILD TF-IDF INDEX
 # ==========================================
 
 @st.cache_resource
@@ -167,21 +242,26 @@ def retrieve(
         sources
     ) = build_index()
 
+
     question_vector = vectorizer.transform(
         [question]
     )
+
 
     scores = cosine_similarity(
         question_vector,
         matrix
     ).flatten()
 
+
     indices = scores.argsort()[
         ::-1
     ][:top_k]
 
+
     relevant_chunks = []
     relevant_sources = []
+
 
     for index in indices:
 
@@ -195,9 +275,11 @@ def retrieve(
                 sources[index]
             )
 
+
     context = "\n\n".join(
         relevant_chunks
     )
+
 
     unique_sources = list(
         dict.fromkeys(
@@ -205,7 +287,68 @@ def retrieve(
         )
     )
 
+
     return context, unique_sources
+
+
+# ==========================================
+# SMART ROUTING
+# ==========================================
+
+def smart_route(question):
+
+    word_count = len(
+        question.split()
+    )
+
+    question_lower = question.lower()
+
+
+    complex_keywords = [
+        "explain",
+        "compare",
+        "difference",
+        "analyze",
+        "analysis",
+        "architecture",
+        "algorithm",
+        "design"
+    ]
+
+
+    coding_keywords = [
+        "python",
+        "code",
+        "program",
+        "function",
+        "bug",
+        "error",
+        "machine learning"
+    ]
+
+
+    if any(
+        keyword in question_lower
+        for keyword in coding_keywords
+    ):
+
+        return "qwen/qwen3.6-27b"
+
+
+    elif (
+        word_count > 20
+        or any(
+            keyword in question_lower
+            for keyword in complex_keywords
+        )
+    ):
+
+        return "openai/gpt-oss-120b"
+
+
+    else:
+
+        return "openai/gpt-oss-20b"
 
 
 # ==========================================
@@ -215,21 +358,35 @@ def retrieve(
 def call_model(
     model,
     question,
-    context
+    context,
+    rag_enabled,
+    prompt_instruction
 ):
+
+    if rag_enabled:
+
+        system_message = (
+            f"{prompt_instruction}\n\n"
+            "Answer only using the provided context. "
+            "If the answer is not available in the context, "
+            "say: 'The answer is not available in the provided documents.'"
+            "\n\n"
+            f"CONTEXT:\n{context}"
+        )
+
+    else:
+
+        system_message = (
+            f"{prompt_instruction}\n\n"
+            "Answer the user's question using your general knowledge."
+        )
+
 
     messages = [
 
         {
             "role": "system",
-            "content": (
-                "You are a helpful RAG assistant. "
-                "Answer only using the provided context. "
-                "If the answer is not available in the context, "
-                "say: 'The answer is not available in the provided documents.' "
-                "\n\n"
-                f"CONTEXT:\n{context}"
-            )
+            "content": system_message
         },
 
         {
@@ -239,7 +396,9 @@ def call_model(
 
     ]
 
+
     start = time.perf_counter()
+
 
     try:
 
@@ -250,6 +409,7 @@ def call_model(
             max_tokens=700
         )
 
+
         latency = round(
             (
                 time.perf_counter()
@@ -257,11 +417,13 @@ def call_model(
             ) * 1000
         )
 
+
         return (
             response.choices[0].message.content,
             latency,
             None
         )
+
 
     except Exception as error:
 
@@ -277,15 +439,42 @@ def call_model(
 # ==========================================
 
 st.title(
-    "📚 MULTI-MODEL ANSWERBOARD "
+    "🤖 Multi-Model RAG Answerboard"
 )
 
 st.write(
-    "Cosine Similarity for document retrieval."
+    "Ask one question and compare multiple AI models "
+    "side-by-side with RAG, smart routing, "
+    "and A/B prompt testing."
 )
 
 
+# ==========================================
+# SIDEBAR
+# ==========================================
+
 with st.sidebar:
+
+    st.header("⚙️ Settings")
+
+
+    rag_enabled = st.toggle(
+        "Enable RAG",
+        value=True
+    )
+
+
+    smart_routing = st.toggle(
+        "Enable Smart Routing",
+        value=False
+    )
+
+
+    ab_testing = st.toggle(
+        "Enable A/B Prompt Testing",
+        value=False
+    )
+
 
     selected_models = st.multiselect(
         "Select Models",
@@ -294,8 +483,9 @@ with st.sidebar:
             "openai/gpt-oss-20b",
             "openai/gpt-oss-120b"
         ],
-        format_func=lambda x: MODELS[x]
+        format_func=lambda x: MODELS[x]["name"]
     )
+
 
     top_k = st.slider(
         "Top K Chunks",
@@ -305,11 +495,41 @@ with st.sidebar:
     )
 
 
+    st.divider()
+
+
+    if smart_routing:
+
+        st.info(
+            "🧠 Smart Routing is enabled. "
+            "The system will automatically select a model."
+        )
+
+    else:
+
+        st.caption(
+            "💡 Select one or more models "
+            "to compare their answers."
+        )
+
+
+# ==========================================
+# QUESTION INPUT
+# ==========================================
+
 question = st.text_area(
     "Ask a question",
-    height=150
+    height=150,
+    placeholder=(
+        "Example: "
+        "What is Retrieval-Augmented Generation?"
+    )
 )
 
+
+# ==========================================
+# SEARCH AND ANSWER
+# ==========================================
 
 if st.button(
     "Search and Answer",
@@ -325,7 +545,31 @@ if st.button(
         st.stop()
 
 
-    if not selected_models:
+    # ======================================
+    # SMART ROUTING
+    # ======================================
+
+    if smart_routing:
+
+        routed_model = smart_route(
+            question
+        )
+
+        models_to_use = [
+            routed_model
+        ]
+
+        st.info(
+            "🧠 Smart Router selected: "
+            f"{MODELS[routed_model]['name']}"
+        )
+
+    else:
+
+        models_to_use = selected_models
+
+
+    if not models_to_use:
 
         st.warning(
             "Please select at least one model."
@@ -334,81 +578,236 @@ if st.button(
         st.stop()
 
 
-    try:
+    # ======================================
+    # RAG RETRIEVAL
+    # ======================================
 
-        context, sources = retrieve(
-            question,
-            top_k
-        )
-
-    except Exception as error:
-
-        st.error(
-            f"Error loading documents: {error}"
-        )
-
-        st.stop()
+    context = ""
+    sources = []
 
 
-    if not context:
+    if rag_enabled:
 
-        st.warning(
-            "No relevant information was found "
-            "in the available documents."
-        )
+        try:
 
-        st.stop()
-
-
-    st.subheader(
-        "📄 Retrieved Sources"
-    )
-
-    for source in sources:
-
-        st.write(
-            f"📄 {source}"
-        )
-
-
-    columns = st.columns(
-        len(selected_models)
-    )
-
-
-    for column, model in zip(
-        columns,
-        selected_models
-    ):
-
-        with column:
-
-            st.subheader(
-                MODELS[model]
+            context, sources = retrieve(
+                question,
+                top_k
             )
 
-            with st.spinner(
-                "Generating..."
-            ):
+        except Exception as error:
 
-                answer, latency, error = call_model(
-                    model,
-                    question,
-                    context
+            st.error(
+                f"Error loading documents: {error}"
+            )
+
+            st.stop()
+
+
+        if not context:
+
+            st.warning(
+                "No relevant information was found "
+                "in the documents."
+            )
+
+            st.stop()
+
+
+        st.subheader(
+            "📄 Retrieved Sources"
+        )
+
+
+        for source in sources:
+
+            st.write(
+                f"📄 {source}"
+            )
+
+
+    # ======================================
+    # A/B PROMPT TESTING
+    # ======================================
+
+    if ab_testing:
+
+        st.subheader(
+            "🧪 A/B Prompt Comparison"
+        )
+
+
+        for model in models_to_use:
+
+            st.divider()
+
+            st.subheader(
+                MODELS[model]["name"]
+            )
+
+
+            col_a, col_b = st.columns(2)
+
+
+            with col_a:
+
+                st.markdown(
+                    "### 🅰️ Prompt A - Concise"
+                )
+
+                with st.spinner(
+                    "Generating Prompt A..."
+                ):
+
+                    answer, latency, error = (
+                        call_model(
+                            model,
+                            question,
+                            context,
+                            rag_enabled,
+                            PROMPTS[
+                                "Prompt A - Concise"
+                            ]
+                        )
+                    )
+
+
+                if error:
+
+                    st.error(error)
+
+                else:
+
+                    st.success(
+                        f"⚡ {latency} ms"
+                    )
+
+                    st.write(answer)
+
+
+            with col_b:
+
+                st.markdown(
+                    "### 🅱️ Prompt B - Detailed"
+                )
+
+                with st.spinner(
+                    "Generating Prompt B..."
+                ):
+
+                    answer, latency, error = (
+                        call_model(
+                            model,
+                            question,
+                            context,
+                            rag_enabled,
+                            PROMPTS[
+                                "Prompt B - Detailed"
+                            ]
+                        )
+                    )
+
+
+                if error:
+
+                    st.error(error)
+
+                else:
+
+                    st.success(
+                        f"⚡ {latency} ms"
+                    )
+
+                    st.write(answer)
+
+
+    # ======================================
+    # NORMAL MULTI-MODEL MODE
+    # ======================================
+
+    else:
+
+        columns = st.columns(
+            len(models_to_use)
+        )
+
+
+        for column, model in zip(
+            columns,
+            models_to_use
+        ):
+
+            with column:
+
+                st.subheader(
+                    MODELS[model]["name"]
                 )
 
 
-            if error:
+                badge_col1, badge_col2 = st.columns(2)
 
-                st.error(
-                    f"Model Error: {error}"
-                )
 
-            else:
+                with badge_col1:
 
-                st.write(answer)
+                    st.caption(
+                        f"💰 Cost: "
+                        f"{MODELS[model]['cost']}"
+                    )
 
-                st.metric(
-                    "Latency",
-                    f"{latency} ms"
-                )
+
+                with badge_col2:
+
+                    st.caption(
+                        f"⚡ Expected: "
+                        f"{MODELS[model]['speed']}"
+                    )
+
+
+                with st.spinner(
+                    "Generating..."
+                ):
+
+                    answer, latency, error = (
+                        call_model(
+                            model,
+                            question,
+                            context,
+                            rag_enabled,
+                            PROMPTS[
+                                "Prompt A - Concise"
+                            ]
+                        )
+                    )
+
+
+                if error:
+
+                    st.error(
+                        f"Model Error: {error}"
+                    )
+
+                else:
+
+                    st.write(
+                        answer
+                    )
+
+
+                    st.metric(
+                        "Actual Latency",
+                        f"{latency} ms"
+                    )
+
+
+                    if rag_enabled and sources:
+
+                        st.markdown(
+                            "#### 📚 Sources"
+                        )
+
+
+                        for source in sources:
+
+                            st.caption(
+                                f"📄 {source}"
+                            )
